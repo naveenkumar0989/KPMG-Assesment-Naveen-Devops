@@ -1,80 +1,141 @@
+kind: ConfigMap
 apiVersion: v1
-kind: ReplicationController
 metadata:
-  labels:
-    name: springboot
-  name: spring-controller
-spec:
-  replicas: 1
-  template:
-    metadata:
-      labels:
-        name: springboot
-    spec:
-      imagePullSecrets:
-      - name: dockerreposecret
-      containers:
-      - image: ************.dkr.ecr.ap-south-1.amazonaws.com/spring-boot-mongo-kubernetes
-        name: springboot
-        ports:
-        - name: springboot
-          containerPort: 8080      
+  name: springappconfigmap
+data:
+  username: springapp
+  password: mongodb@123
+
 ---
-# Node Port Service
 apiVersion: v1
-kind: Service
+kind: Secret
 metadata:
-  labels:
-    name: springboot
-  name: springboot
+  name: springappsecrets
+type: Opaque
+stringData:   # We can define multiple key value pairs.
+  password: devdb@123
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-hostpath
 spec:
-  type: NodePort
-  ports:
-    - port: 8080
-      targetPort: 8080
+  storageClassName: manual
+  capacity:
+    storage: 1Gi
+  accessModes:
+  - ReadWriteOnce
+  hostPath:
+    path: "/tmp/mongodata"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-hostpath
+spec:
+  storageClassName: manual
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+
+---
+## Spring Boot App
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: springappdeployment
+spec:
+  replicas: 2
   selector:
-    name: springboot
----
-# Mongo host path rc
-apiVersion: v1
-kind: ReplicationController
-metadata:
-  labels:
-    name: mongo
-  name: mongo-controller
-spec:
-  replicas: 1
+    matchLabels:
+      app: springapp
   template:
     metadata:
+      name: springapppod
       labels:
-        name: mongo
+        app: springapp
     spec:
       containers:
-      - image: mongo
-        name: mongo
+      - name: springappcontainer
+        image: ************.dkr.ecr.ap-south-1.amazonaws.com/spring-boot-mongo
         ports:
-        - name: mongo
-          containerPort: 27017
-          hostPort: 27017
-        volumeMounts:
-        - name: mongo-persistent-storage
-          mountPath: /data/db
-      volumes:
-      - name: mongo-persistent-storage
-        hostPath:
-         path: /tmp/dbbackup
+        - containerPort: 8080
+        env:
+        - name: MONGO_DB_USERNAME
+          valueFrom:
+            configMapKeyRef:
+              name: springappconfigmap
+              key: username
+        - name: MONGO_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: springappsecrets
+              key: password
+        - name: MONGO_DB_HOSTNAME
+          value: mongo
 ---
-# Mongo Node Port RC
 apiVersion: v1
 kind: Service
 metadata:
-  labels:
-    name: mongo
+  name: springapp
+spec:
+  selector:
+    app: springapp
+  ports:
+  - port: 80
+    targetPort: 8080
+  type: NodePort
+---
+# Mongo db pod with volumes(HostPath)
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: mongodbrs
+spec:
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+     metadata:
+       name: mongodbpod
+       labels:
+         app: mongodb
+     spec:
+       volumes:
+       - name: mongodb-pvc
+         persistentVolumeClaim:
+           claimName: pvc-hostpath
+       containers:
+       - name: mongodbcontainer
+         image: mongo
+         ports:
+         - containerPort: 27017
+         env:
+         - name: MONGO_INITDB_ROOT_USERNAME
+           valueFrom:
+             configMapKeyRef:
+               name: springappconfigmap
+               key: username
+         - name: MONGO_INITDB_ROOT_PASSWORD
+           valueFrom:
+             secretKeyRef:
+               name: springappsecrets
+               key: password
+         volumeMounts:
+         - name: mongodb-pvc
+           mountPath: /data/db
+---
+apiVersion: v1
+kind: Service
+metadata:
   name: mongo
 spec:
   type: ClusterIP
-  ports:
-    - port: 27017
-      targetPort: 27017
   selector:
-    name: mongo
+    app: mongodb
+  ports:
+  - port: 27017
+    targetPort: 27017
