@@ -15,8 +15,11 @@ node{
        sh "docker push **********.dkr.ecr.ap-south-1.amazonaws.com/spring-boot-mongo-kubernetes:${buildnumber} "											
    }											
     }											
-    stage('Deploy To Kubernetes Cluster') {													
-	sh 'kubectl apply -f springBootMongo.yml'													
+    stage("Deploy To Kuberates Cluster"){
+       kubernetesDeploy(
+         configs: 'springBootMongo.yml', 
+         kubeconfigId: 'KUBERNATES_CONFIG',
+         enableConfigSubstitution: true													
 											
     }											
 }											
