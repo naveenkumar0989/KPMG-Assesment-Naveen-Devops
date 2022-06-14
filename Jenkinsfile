@@ -14,12 +14,16 @@ node{
         sh "aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin *************.dkr.ecr.ap-south-1.amazonaws.com"											
        sh "docker push **********.dkr.ecr.ap-south-1.amazonaws.com/spring-boot-mongo-kubernetes:${buildnumber} "											
    }											
-    }											
     stage("Deploy To Kuberates Cluster"){
        kubernetesDeploy(
          configs: 'springBootMongo.yml', 
          kubeconfigId: 'KUBERNATES_CONFIG',
-         enableConfigSubstitution: true													
-											
-    }											
+         enableConfigSubstitution: true
+        )
+     }
+	 
+	  /**
+      stage("Deploy To Kuberates Cluster"){
+        sh 'kubectl apply -f springBootMongo.yml'
+      } **/									
 }											
